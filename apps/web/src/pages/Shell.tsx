@@ -1254,7 +1254,11 @@ function SpaceShell() {
             .adoptTimezone({ timezone: localTimezone() })
             .then((nextMe) => {
               if (!cancelled) {
-                setBootstrapMe((current) => (current?.timezone == null ? nextMe : current));
+                setBootstrapMe((current) =>
+                  current && current.timezone == null
+                    ? { ...current, timezone: nextMe.timezone }
+                    : (current ?? nextMe),
+                );
               }
             })
             .catch(() => {});
@@ -4848,12 +4852,15 @@ function SpaceShell() {
             }}
             onAvatarStyleChange={async (avatarStyle) => {
               const nextMe = await rpc.preferences.update({ avatarStyle });
-              setBootstrapMe(nextMe);
+              // Merge only the saved field: a concurrent save's response must not be undone.
+              setBootstrapMe((prev) =>
+                prev ? { ...prev, avatarStyle: nextMe.avatarStyle } : nextMe,
+              );
             }}
             timezone={bootstrapMe?.timezone ?? null}
             onTimezoneChange={async (timezone) => {
               const nextMe = await rpc.preferences.update({ timezone });
-              setBootstrapMe(nextMe);
+              setBootstrapMe((prev) => (prev ? { ...prev, timezone: nextMe.timezone } : nextMe));
             }}
             memoryConfig={memoryProviderConfig}
             onMemoryConfigChange={(config) => {
