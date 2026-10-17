@@ -62,8 +62,8 @@ function fixture() {
       State: { Running: true },
       NetworkSettings: { Networks: { "bot-network": { IPAddress: "172.28.0.2" } } },
     }),
-    exec: vi.fn(async () => ({
-      start: async () => Readable.from([]),
+    exec: vi.fn(async (options: { Cmd: string[] }) => ({
+      start: async () => Readable.from(options.Cmd[1] === "-lc" ? ["GEOM 1 1\nIMAGE AQID\n"] : []),
       inspect: async () => ({ ExitCode: 0 }),
     })),
   };
@@ -148,9 +148,21 @@ describe("isolated screen peer gateway priority through the supervisor route", (
     members.clear();
     vi.resetModules();
     connect.mockClear();
-    await observe();
+    expect((await observe()).status).toBe(200);
     expect(connect).toHaveBeenCalledWith({ Container: "supervisor-peer" });
     expect(connect).toHaveBeenCalledWith({ Container: "web-peer" });
+  });
+
+  it("keeps observing when rejoining the computer network fails", async () => {
+    const { connect, members } = fixture();
+    members.add("supervisor-peer");
+    connect.mockRejectedValueOnce(new Error("peer disappeared before connect"));
+
+    const response = await observe();
+
+    expect(connect).toHaveBeenCalledWith({ Container: "web-peer" });
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ image: "AQID", width: 1, height: 1 });
   });
 
   it("keeps opening screens after a failed version lookup and retries discovery later", async () => {

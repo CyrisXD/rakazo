@@ -1238,7 +1238,11 @@ async function ensureManagedScreen(
     if (info.State?.StartedAt === screen.info.State?.StartedAt) {
       // Confirm the pending boot marker only after setup completes against the same boot.
       if (info.State?.StartedAt) computerScreenBoots.set(id, info.State.StartedAt);
-      await rejoinComputerNetwork(info);
+      try {
+        await rejoinComputerNetwork(info);
+      } catch (error) {
+        getLogger().error("computer network rejoin failed", error);
+      }
       return { ...screen, info };
     }
     clearComputerScreenRegistry(computerScreens, computerScreenBoots, id);
