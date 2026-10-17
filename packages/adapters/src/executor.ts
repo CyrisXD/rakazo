@@ -6854,12 +6854,17 @@ export function createRunExecutor(deps: ExecutorDeps) {
           { exposedToolNames: new Set(tools.map((tool) => tool.name)) },
         );
         const replyContext = await loadReplyContext(deps.prisma, thread.id, run.sourceMessageId);
-        const userTimeZone = (
-          await deps.prisma.user.findUnique({
-            where: { id: run.userId },
-            select: { timezone: true },
-          })
-        )?.timezone;
+        let userTimeZone: string | null | undefined;
+        try {
+          userTimeZone = (
+            await deps.prisma.user.findUnique({
+              where: { id: run.userId },
+              select: { timezone: true },
+            })
+          )?.timezone;
+        } catch {
+          // Timezone is optional context; a lookup failure must not prevent a run.
+        }
         const prompt = [
           replyContext,
           run.trigger === "reaction" && replyContext ? undefined : basePrompt,
