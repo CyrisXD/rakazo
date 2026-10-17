@@ -851,6 +851,10 @@ msgstr "Bots"
 msgid "Bots are working"
 msgstr "Bots are working"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Bots use it for the current time, and new routines start in it."
+msgstr "Bots use it for the current time, and new routines start in it."
+
 #: src/pages/Paywall.tsx
 msgid "Bots with their own computer and browser"
 msgstr "Bots with their own computer and browser"
@@ -1782,6 +1786,10 @@ msgstr "Couldn't update avatars"
 #: src/pages/MessagingSettingsOverlay.tsx
 msgid "Couldn't update messaging settings"
 msgstr "Couldn't update messaging settings"
+
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Couldn't update your timezone"
+msgstr "Couldn't update your timezone"
 
 #: src/pages/Board.tsx
 #: src/pages/Shell.tsx
@@ -4565,6 +4573,10 @@ msgstr "This week"
 msgid "Time of day"
 msgstr "Time of day"
 
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Timezone"
+msgstr "Timezone"
+
 #: src/pages/Board.tsx
 #: src/pages/shell/bot-panel.tsx
 msgid "Title"
@@ -4773,6 +4785,11 @@ msgstr "Use default guidance"
 #: src/components/teach/TeachRecordingChrome.tsx
 msgid "Use Protected input for passwords."
 msgstr "Use Protected input for passwords."
+
+#. placeholder {0}: deviceTimezone.replaceAll("_", " ")
+#: src/pages/AccountSettingsOverlay.tsx
+msgid "Use this device's timezone ({0})"
+msgstr "Use this device's timezone ({0})"
 
 #: src/pages/ModelSettingsOverlay.tsx
 msgid "Use this model"
