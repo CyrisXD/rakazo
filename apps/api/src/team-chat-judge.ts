@@ -133,12 +133,17 @@ export class ModelTeamChatEngagementJudge implements TeamChatEngagementJudge {
       const resolved = await this.resolveModel(input.bot);
       if (!resolved) return { act: false };
       // Standing rules can be time-based ("only during work hours"): judge them in the owner's zone.
-      const ownerTimeZone = (
-        await this.deps.prisma.user.findUnique({
-          where: { id: input.bot.userId },
-          select: { timezone: true },
-        })
-      )?.timezone;
+      let ownerTimeZone: string | null | undefined;
+      try {
+        ownerTimeZone = (
+          await this.deps.prisma.user.findUnique({
+            where: { id: input.bot.userId },
+            select: { timezone: true },
+          })
+        )?.timezone;
+      } catch {
+        // Timezone is optional context; a lookup failure must not prevent judging.
+      }
       const prompt = renderTeamChatEngagementPrompt({
         botName: input.bot.name,
         channelId: input.channelId,

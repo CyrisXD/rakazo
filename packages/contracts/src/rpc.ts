@@ -192,7 +192,6 @@ export const appContract = {
     portal: oc.output(z.object({ url: z.string().url() })),
   },
   preferences: {
-    adoptTimezone: oc.input(z.object({ timezone: TimeZoneSchema })).output(MeSchema),
     update: oc
       .input(
         z
