@@ -234,7 +234,9 @@ export class PageBrowserSession {
 
 function isIgnored(win: DomWindow, el: DomElement): boolean {
   if (el instanceof win.HTMLInputElement && el.type === "hidden") return true;
-  if (el.getAttribute("aria-hidden") === "true") return true;
+  // Sites often aria-hide the real file input behind a styled button; it is still the upload target.
+  if (el.getAttribute("aria-hidden") === "true")
+    return !(el instanceof win.HTMLInputElement && el.type === "file");
   return false;
 }
 
