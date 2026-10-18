@@ -409,6 +409,18 @@ EVAL_HELPERS = r"""
     }
     return typeof el.onclick === "function" || el.hasAttribute("tabindex");
   }
+  // File inputs in open shadow roots (web-component uploaders) are invisible to querySelectorAll.
+  function allFileInputs() {
+    const found = [];
+    const walk = (root) => {
+      for (const el of root.querySelectorAll("*")) {
+        if (isFileInput(el)) found.push(el);
+        if (el.shadowRoot) walk(el.shadowRoot);
+      }
+    };
+    walk(document);
+    return found;
+  }
   function formatTree(elements) {
     if (!elements.length) return "(no interactive elements)";
     return elements
@@ -423,10 +435,11 @@ EVAL_HELPERS = r"""
     snapshot() {
       refMap.clear();
       const elements = [];
-      for (const el of document.querySelectorAll("body *")) {
-        if (!isInteractive(el) || !(visible(el) || isFileInput(el))) continue;
+      const listed = new Set();
+      const describe = (el) => {
         const ref = newRef();
         refMap.set(ref, el);
+        listed.add(el);
         elements.push({
           ref,
           role: roleOf(el),
@@ -437,7 +450,15 @@ EVAL_HELPERS = r"""
             : "value" in el ? String(el.value ?? "").slice(0, 2000) : undefined,
           tag: el.tagName.toLowerCase(),
         });
+      };
+      for (const el of document.querySelectorAll("body *")) {
+        if (!isInteractive(el) || !(visible(el) || isFileInput(el))) continue;
+        describe(el);
         if (elements.length >= 80) break;
+      }
+      // Upload targets are listed even past the element cap or inside shadow DOM.
+      for (const el of allFileInputs()) {
+        if (!listed.has(el)) describe(el);
       }
       return {
         url: location.href,
