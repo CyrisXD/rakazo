@@ -5608,8 +5608,12 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 ? redactConnectorPayload(await tool(browser, computer, context, args), redactions())
                 : await browserActFromTool(browser, computer, context, args, {
                     redactions,
-                    // Only this bot's folder or shared/: an upload can send a file off the computer.
-                    resolveUploadPath: (path) => resolveBotUploadPath(computerMode, bot.id, path),
+                    // Team bots may send only their own folder or shared/ off the computer; a
+                    // private computer's helper already confines uploads to its home folder.
+                    resolveUploadPath: (path) =>
+                      computerMode === "team"
+                        ? resolveBotUploadPath(computerMode, bot.id, path)
+                        : path,
                     resolveSecretFill: async (step) => {
                       const resolved = await resolveLoginFill({
                         prisma: deps.prisma,
