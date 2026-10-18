@@ -227,6 +227,7 @@ import {
 import { withComputerScreenAvailability } from "./computer-screens.js";
 import {
   displayBotWorkspacePath,
+  resolveBotUploadPath,
   resolveBotWorkspaceCwd,
   resolveBotWorkspacePath,
   teamBotWorkspaceDirectory,
@@ -5607,8 +5608,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 ? redactConnectorPayload(await tool(browser, computer, context, args), redactions())
                 : await browserActFromTool(browser, computer, context, args, {
                     redactions,
-                    resolveUploadPath: (path) =>
-                      resolveBotWorkspacePath(computerMode, bot.id, path),
+                    // Only this bot's folder or shared/: an upload can send a file off the computer.
+                    resolveUploadPath: (path) => resolveBotUploadPath(computerMode, bot.id, path),
                     resolveSecretFill: async (step) => {
                       const resolved = await resolveLoginFill({
                         prisma: deps.prisma,
