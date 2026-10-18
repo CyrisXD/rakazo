@@ -102,7 +102,7 @@ describe("browser tools", () => {
         "https://example.test/expense": {
           title: "Expense",
           html: `<!doctype html><html><head><title>Expense</title></head><body>
-            <label>Receipt <input type="file" style="display:none" /></label>
+            <label>Receipt <input type="file" role="button" style="display:none" /></label>
             <button>Save</button>
           </body></html>`,
         },

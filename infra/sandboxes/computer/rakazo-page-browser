@@ -364,6 +364,7 @@ EVAL_HELPERS = r"""
     return rect.width > 0 && rect.height > 0;
   }
   function roleOf(el) {
+    if (isFileInput(el)) return "file upload";
     const explicit = el.getAttribute("role");
     if (explicit) return explicit;
     const tag = el.tagName.toLowerCase();
@@ -372,7 +373,6 @@ EVAL_HELPERS = r"""
     if (tag === "input") {
       const type = (el.getAttribute("type") || "text").toLowerCase();
       if (type === "submit" || type === "button") return "button";
-      if (type === "file") return "file upload";
       if (type === "checkbox") return "checkbox";
       if (type === "radio") return "radio";
       return "textbox";
@@ -451,10 +451,12 @@ EVAL_HELPERS = r"""
           tag: el.tagName.toLowerCase(),
         });
       };
+      // Upload targets do not count toward the 80-control cap, so hidden inputs cannot crowd out buttons.
+      let controls = 0;
       for (const el of document.querySelectorAll("body *")) {
         if (!isInteractive(el) || !(visible(el) || isFileInput(el))) continue;
         describe(el);
-        if (elements.length >= 80) break;
+        if (!isFileInput(el) && ++controls >= 80) break;
       }
       // Upload targets are listed even past the element cap or inside shadow DOM.
       for (const el of allFileInputs()) {

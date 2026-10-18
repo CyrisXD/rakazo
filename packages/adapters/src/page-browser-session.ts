@@ -36,8 +36,6 @@ export class PageBrowserSession {
   private refs = new Map<string, DomElement>();
   /** Fields holding a saved login; snapshots never report their values. */
   private loginFilled = new WeakSet<DomElement>();
-  /** Names of files attached by upload steps; jsdom cannot hold real files. */
-  private uploaded = new WeakMap<DomElement, string[]>();
   private nextRef = 1;
 
   constructor(
@@ -131,10 +129,9 @@ export class PageBrowserSession {
       if (action.paths.length > 1 && !el.multiple) {
         throw new Error("This file upload accepts one file");
       }
-      this.uploaded.set(
-        el,
-        action.paths.map((path) => path.split("/").pop() ?? path),
-      );
+      // jsdom cannot build a FileList, so page handlers get named, empty files instead.
+      const files = action.paths.map((path) => new win.File([], path.split("/").pop() ?? path));
+      Object.defineProperty(el, "files", { configurable: true, value: files });
       el.dispatchEvent(new win.Event("input", { bubbles: true }));
       el.dispatchEvent(new win.Event("change", { bubbles: true }));
       return;
@@ -223,9 +220,7 @@ export class PageBrowserSession {
       this.refs.set(ref, node);
       const role = roleFor(win, node);
       const name = nameFor(win, node);
-      const value = this.loginFilled.has(node)
-        ? undefined
-        : (this.uploaded.get(node)?.join(", ") ?? valueFor(win, node));
+      const value = this.loginFilled.has(node) ? undefined : valueFor(win, node);
       const tag = node.tagName.toLowerCase();
       const entry: BrowserSnapshotNode = { ref, role, name, tag };
       if (value !== undefined) entry.value = value;
@@ -244,6 +239,7 @@ function isIgnored(win: DomWindow, el: DomElement): boolean {
 }
 
 function roleFor(win: DomWindow, el: DomElement): string {
+  if (el instanceof win.HTMLInputElement && el.type === "file") return "file upload";
   const explicit = el.getAttribute("role");
   if (explicit) return explicit;
   const tag = el.tagName.toLowerCase();
@@ -256,7 +252,6 @@ function roleFor(win: DomWindow, el: DomElement): string {
     const type = (el.type || "text").toLowerCase();
     if (type === "checkbox") return "checkbox";
     if (type === "radio") return "radio";
-    if (type === "file") return "file upload";
     if (type === "submit" || type === "button" || type === "reset") return "button";
     return "textbox";
   }
@@ -280,6 +275,7 @@ function nameFor(win: DomWindow, el: DomElement): string {
 function valueFor(win: DomWindow, el: DomElement): string | undefined {
   if (el instanceof win.HTMLInputElement) {
     if (el.type === "checkbox" || el.type === "radio") return el.checked ? "checked" : "unchecked";
+    if (el.type === "file") return Array.from(el.files ?? [], (file) => file.name).join(", ");
     if (el.type === "password") return el.value ? "••••" : "";
     return el.value;
   }
