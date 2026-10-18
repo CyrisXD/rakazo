@@ -500,6 +500,11 @@ app.post("/computers/:id/browser", async (c) => {
             z.discriminatedUnion("kind", [
               z.object({ kind: z.literal("click"), ref: z.string().min(1).max(200) }),
               z.object({
+                kind: z.literal("upload"),
+                ref: z.string().min(1).max(200),
+                paths: z.array(z.string().min(1).max(1024)).min(1).max(10),
+              }),
+              z.object({
                 kind: z.enum(["fill", "type"]),
                 ref: z.string().min(1).max(200),
                 text: z.string().max(32_000),

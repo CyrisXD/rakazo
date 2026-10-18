@@ -350,6 +350,10 @@ EVAL_HELPERS = r"""
   function newRef() {
     return `e${Array.from(crypto.getRandomValues(new Uint32Array(4)), n => n.toString(16).padStart(8, "0")).join("")}`;
   }
+  // Sites usually hide the real file input behind a styled button; it is still the upload target.
+  function isFileInput(el) {
+    return el instanceof HTMLInputElement && el.type === "file";
+  }
   function visible(el) {
     if (!(el instanceof Element)) return false;
     const style = window.getComputedStyle(el);
@@ -368,6 +372,7 @@ EVAL_HELPERS = r"""
     if (tag === "input") {
       const type = (el.getAttribute("type") || "text").toLowerCase();
       if (type === "submit" || type === "button") return "button";
+      if (type === "file") return "file upload";
       if (type === "checkbox") return "checkbox";
       if (type === "radio") return "radio";
       return "textbox";
@@ -419,7 +424,7 @@ EVAL_HELPERS = r"""
       refMap.clear();
       const elements = [];
       for (const el of document.querySelectorAll("body *")) {
-        if (!isInteractive(el) || !visible(el)) continue;
+        if (!isInteractive(el) || !(visible(el) || isFileInput(el))) continue;
         const ref = newRef();
         refMap.set(ref, el);
         elements.push({
@@ -427,6 +432,7 @@ EVAL_HELPERS = r"""
           role: roleOf(el),
           name: String(nameOf(el)).slice(0, 200),
           value: el.type === "password" || loginFilled.has(el) ? undefined
+            : isFileInput(el) ? Array.from(el.files || [], (file) => file.name).join(", ")
             : ["checkbox", "radio"].includes(el.type) ? (el.checked ? "checked" : "unchecked")
             : "value" in el ? String(el.value ?? "").slice(0, 2000) : undefined,
           tag: el.tagName.toLowerCase(),
@@ -443,7 +449,7 @@ EVAL_HELPERS = r"""
     },
     resolve(ref) {
       const el = refMap.get(String(ref));
-      if (!el || !el.isConnected || !visible(el)) return null;
+      if (!el || !el.isConnected || !(visible(el) || isFileInput(el))) return null;
       if (el.matches(":disabled") || el.getAttribute("aria-disabled") === "true") {
         throw new Error("Element is disabled");
       }
@@ -496,6 +502,13 @@ EVAL_HELPERS = r"""
         throw new Error(`Element is not fillable: ${ref}`);
       }
       return { url: location.href, title: (document.title || "").slice(0, 200) };
+    },
+    fileInput(ref, count) {
+      const el = this.resolve(ref);
+      if (!el) throw new Error(`Unknown element ref: ${ref}`);
+      if (!isFileInput(el)) throw new Error("upload needs a file upload element from browser_snapshot");
+      if (count > 1 && !el.multiple) throw new Error("This file upload accepts one file");
+      return el;
     },
     type(ref, text) {
       const el = this.resolve(ref);
@@ -564,6 +577,56 @@ def navigate(client: CdpClient, session_id: str, url: str) -> dict[str, Any]:
     raise RuntimeError("Navigation did not settle; inspect the screen before continuing")
 
 
+MAX_UPLOAD_FILES = 10
+
+
+def resolve_upload_paths(paths: Any, home: str | None = None) -> list[str]:
+    """Absolute paths to existing regular files inside the computer's home folder."""
+    if not isinstance(paths, list) or not 1 <= len(paths) <= MAX_UPLOAD_FILES:
+        raise RuntimeError(f"upload needs 1 to {MAX_UPLOAD_FILES} file paths")
+    root = os.path.realpath(home or os.environ.get("HOME") or "/home/rakazo")
+    resolved = []
+    for path in paths:
+        if not isinstance(path, str) or not path.strip():
+            raise RuntimeError("upload paths must be non-empty strings")
+        # realpath follows symlinks, so a link cannot point an upload outside home.
+        full = os.path.realpath(os.path.join(root, path))
+        if os.path.commonpath([root, full]) != root:
+            raise RuntimeError(f"Upload files must be inside this computer's home folder: {path}")
+        if not os.path.isfile(full):
+            raise RuntimeError(f"File not found: {path}")
+        resolved.append(full)
+    return resolved
+
+
+def upload(client: CdpClient, session_id: str, ref: str, files: list[str]) -> None:
+    # Hand the files to the input directly: no native file chooser is opened.
+    result = client.call(
+        "Runtime.evaluate",
+        {
+            "expression": f"window.__rakazoPageBrowser.fileInput({json.dumps(ref)}, {len(files)})",
+            "contextId": client.context_id,
+            "returnByValue": False,
+        },
+        session_id=session_id,
+    )
+    if result.get("exceptionDetails"):
+        details = result["exceptionDetails"]
+        raise RuntimeError(
+            (details.get("exception") or {}).get("description")
+            or details.get("text")
+            or "upload failed"
+        )
+    object_id = (result.get("result") or {}).get("objectId")
+    if not object_id:
+        raise RuntimeError("upload target unavailable")
+    try:
+        client.call("DOM.setFileInputFiles", {"files": files, "objectId": object_id},
+                    session_id=session_id)
+    finally:
+        client.call("Runtime.releaseObject", {"objectId": object_id}, session_id=session_id)
+
+
 def snapshot(client: CdpClient, session_id: str) -> dict[str, Any]:
     ensure_helpers(client, session_id)
     data = eval_json(client, session_id, "window.__rakazoPageBrowser.snapshot()")
@@ -576,11 +639,14 @@ def act(client: CdpClient, session_id: str, actions: list[dict[str, Any]]) -> di
     if not actions or len(actions) > 24:
         raise RuntimeError("Expected 1 to 24 actions")
     for step in actions:
-        if not isinstance(step, dict) or step.get("kind") not in ("click", "fill", "type"):
+        if not isinstance(step, dict) or step.get("kind") not in ("click", "fill", "type", "upload"):
             raise RuntimeError("Invalid browser action")
         if not isinstance(step.get("ref"), str) or not step["ref"]:
             raise RuntimeError("Element ref is required")
-        if step["kind"] != "click" and not isinstance(step.get("text"), str):
+        if step["kind"] == "upload":
+            # Check every file before acting, so a bad path cannot leave a half-done form.
+            step["files"] = resolve_upload_paths(step.get("paths"))
+        elif step["kind"] != "click" and not isinstance(step.get("text"), str):
             raise RuntimeError("Text is required")
         if step.get("origin") is not None and (
             step["kind"] != "fill" or not isinstance(step["origin"], str)
@@ -595,6 +661,12 @@ def act(client: CdpClient, session_id: str, actions: list[dict[str, Any]]) -> di
             # Preflight catches stale refs before a mutation is dispatched.
             if not eval_json(client, session_id, f"Boolean(window.__rakazoPageBrowser.resolve({json.dumps(ref)}))"):
                 raise RuntimeError("Stale element ref. Take a fresh snapshot.")
+            if kind == "upload":
+                uncertain = True
+                upload(client, session_id, ref, step["files"])
+                completed += 1
+                uncertain = False
+                continue
             arguments = json.dumps(ref)
             if kind != "click":
                 arguments += ", " + json.dumps(step["text"])

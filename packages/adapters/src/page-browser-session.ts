@@ -36,6 +36,8 @@ export class PageBrowserSession {
   private refs = new Map<string, DomElement>();
   /** Fields holding a saved login; snapshots never report their values. */
   private loginFilled = new WeakSet<DomElement>();
+  /** Names of files attached by upload steps; jsdom cannot hold real files. */
+  private uploaded = new WeakMap<DomElement, string[]>();
   private nextRef = 1;
 
   constructor(
@@ -122,6 +124,21 @@ export class PageBrowserSession {
 
   private applyAction(el: DomElement, action: BrowserActStep): void {
     const win = this.dom.window;
+    if (action.kind === "upload") {
+      if (!(el instanceof win.HTMLInputElement) || el.type !== "file") {
+        throw new Error("upload needs a file upload element from browser_snapshot");
+      }
+      if (action.paths.length > 1 && !el.multiple) {
+        throw new Error("This file upload accepts one file");
+      }
+      this.uploaded.set(
+        el,
+        action.paths.map((path) => path.split("/").pop() ?? path),
+      );
+      el.dispatchEvent(new win.Event("input", { bubbles: true }));
+      el.dispatchEvent(new win.Event("change", { bubbles: true }));
+      return;
+    }
     if (action.kind === "click") {
       if (el instanceof win.HTMLAnchorElement && el.href) {
         const next = new URL(el.href, this.url);
@@ -206,7 +223,9 @@ export class PageBrowserSession {
       this.refs.set(ref, node);
       const role = roleFor(win, node);
       const name = nameFor(win, node);
-      const value = this.loginFilled.has(node) ? undefined : valueFor(win, node);
+      const value = this.loginFilled.has(node)
+        ? undefined
+        : (this.uploaded.get(node)?.join(", ") ?? valueFor(win, node));
       const tag = node.tagName.toLowerCase();
       const entry: BrowserSnapshotNode = { ref, role, name, tag };
       if (value !== undefined) entry.value = value;
@@ -237,6 +256,7 @@ function roleFor(win: DomWindow, el: DomElement): string {
     const type = (el.type || "text").toLowerCase();
     if (type === "checkbox") return "checkbox";
     if (type === "radio") return "radio";
+    if (type === "file") return "file upload";
     if (type === "submit" || type === "button" || type === "reset") return "button";
     return "textbox";
   }

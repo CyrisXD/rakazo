@@ -156,6 +156,51 @@ class PageBrowserTest(unittest.TestCase):
         helper.ensure_world(client, "session-a")
         self.assertEqual(client.context_id, 7)
 
+    def test_upload_paths_must_be_existing_files_inside_home(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as home, tempfile.TemporaryDirectory() as outside:
+            receipt = Path(home, "receipts", "march.pdf")
+            receipt.parent.mkdir()
+            receipt.write_bytes(b"%PDF-1.4")
+            secret = Path(outside, "secret.txt")
+            secret.write_text("nope")
+            Path(home, "escape.txt").symlink_to(secret)
+
+            self.assertEqual(
+                helper.resolve_upload_paths(["receipts/march.pdf"], home),
+                [os.path.realpath(receipt)],
+            )
+            for paths, message in (
+                (["../" + Path(outside).name + "/secret.txt"], "inside this computer's home"),
+                ([str(secret)], "inside this computer's home"),
+                (["escape.txt"], "inside this computer's home"),
+                (["receipts/missing.pdf"], "File not found"),
+                (["receipts"], "File not found"),
+                ([], "1 to 10"),
+                (["a"] * 11, "1 to 10"),
+                ([""], "non-empty"),
+            ):
+                with self.subTest(paths=paths), self.assertRaisesRegex(RuntimeError, message):
+                    helper.resolve_upload_paths(paths, home)
+
+    def test_upload_sets_files_on_the_input_without_a_file_chooser(self):
+        client = Mock()
+        client.context_id = 7
+        client.call.side_effect = [{"result": {"objectId": "node-1"}}, {}, {}]
+        helper.upload(client, "session", "e1", ["/home/rakazo/receipt.pdf"])
+        methods = [call.args[0] for call in client.call.call_args_list]
+        self.assertEqual(methods, ["Runtime.evaluate", "DOM.setFileInputFiles", "Runtime.releaseObject"])
+        self.assertEqual(
+            client.call.call_args_list[1].args[1],
+            {"files": ["/home/rakazo/receipt.pdf"], "objectId": "node-1"},
+        )
+
+    def test_upload_rejects_a_bad_path_before_touching_the_page(self):
+        with patch.object(helper, "ensure_helpers") as ensure:
+            with self.assertRaisesRegex(RuntimeError, "File not found"):
+                helper.act(Mock(), "session", [{"kind": "upload", "ref": "e1", "paths": ["nope.pdf"]}])
+        ensure.assert_not_called()
+
 
 if __name__ == "__main__":
     unittest.main()

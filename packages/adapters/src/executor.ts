@@ -5607,6 +5607,8 @@ export function createRunExecutor(deps: ExecutorDeps) {
                 ? redactConnectorPayload(await tool(browser, computer, context, args), redactions())
                 : await browserActFromTool(browser, computer, context, args, {
                     redactions,
+                    resolveUploadPath: (path) =>
+                      resolveBotWorkspacePath(computerMode, bot.id, path),
                     resolveSecretFill: async (step) => {
                       const resolved = await resolveLoginFill({
                         prisma: deps.prisma,
