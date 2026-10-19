@@ -503,6 +503,7 @@ app.post("/computers/:id/browser", async (c) => {
                 kind: z.literal("upload"),
                 ref: z.string().min(1).max(200),
                 paths: z.array(z.string().min(1).max(1024)).min(1).max(10),
+                roots: z.array(z.string().min(1).max(1024)).max(2).optional(),
               }),
               z.object({
                 kind: z.enum(["fill", "type"]),
@@ -545,6 +546,9 @@ app.post("/computers/:id/browser", async (c) => {
           "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
           "RAKAZO_BROWSER_WATCH_STDIN=1",
           "RAKAZO_BROWSER_ARGS_STDIN=1",
+          ...(process.env.RAKAZO_BROWSER_UPLOAD_MAX_BYTES !== undefined
+            ? [`RAKAZO_BROWSER_UPLOAD_MAX_BYTES=${process.env.RAKAZO_BROWSER_UPLOAD_MAX_BYTES}`]
+            : []),
         ],
         timeoutMs: 25_000,
         signal,

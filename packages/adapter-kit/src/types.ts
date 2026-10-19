@@ -910,7 +910,7 @@ export const MAX_BROWSER_UPLOAD_FILES = 10;
 export type BrowserActStep =
   | { kind: "click"; ref: string }
   /** Attaches computer files to a file input without opening a native file chooser. */
-  | { kind: "upload"; ref: string; paths: string[] }
+  | { kind: "upload"; ref: string; paths: string[]; roots?: string[] }
   | {
       kind: "fill" | "type";
       ref: string;

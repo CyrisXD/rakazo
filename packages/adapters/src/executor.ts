@@ -5610,6 +5610,10 @@ export function createRunExecutor(deps: ExecutorDeps) {
                     redactions,
                     // Team bots may send only their own folder or shared/ off the computer; a
                     // private computer's helper already confines uploads to its home folder.
+                    uploadRoots:
+                      computerMode === "team"
+                        ? [teamBotWorkspaceDirectory(bot.id), "shared"]
+                        : undefined,
                     resolveUploadPath: (path) =>
                       computerMode === "team"
                         ? resolveBotUploadPath(computerMode, bot.id, path)

@@ -78,6 +78,8 @@ export async function browserActFromTool(
     redactions?: () => string[];
     /** Maps a bot-facing workspace path to its path in the computer's home. */
     resolveUploadPath?: (path: string) => string;
+    /** Trusted upload roots relative to the computer home, set by the executor. */
+    uploadRoots?: string[];
   } = {},
 ) {
   try {
@@ -86,7 +88,11 @@ export async function browserActFromTool(
     for (const step of parseBrowserActions(args.actions)) {
       if (step.kind === "upload") {
         const resolve = options.resolveUploadPath ?? ((path: string) => path);
-        actions.push({ ...step, paths: step.paths.map(resolve) });
+        actions.push({
+          ...step,
+          paths: step.paths.map(resolve),
+          ...(options.uploadRoots ? { roots: options.uploadRoots } : {}),
+        });
         continue;
       }
       if (step.kind !== "fill_secret") {

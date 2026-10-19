@@ -1,5 +1,5 @@
 import type { AdapterContext, ComputerRef } from "@rakazo/adapter-kit";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   browserActFromTool,
   browserNavigateFromTool,
@@ -95,6 +95,51 @@ describe("browser tools", () => {
       parseBrowserActions([{ kind: "upload", ref: "e3", paths: Array(11).fill("a.pdf") }]),
     ).toThrow(/at most 10/);
   });
+
+  it.each([undefined, ["bots/b1", "shared"]])(
+    "uses only trusted upload roots: %j",
+    async (uploadRoots) => {
+      const browser = new FakeBrowserProvider();
+      const act = vi.spyOn(browser, "act").mockResolvedValue({
+        ok: true,
+        completed: 2,
+        url: "https://example.test",
+        title: "Fixture",
+      });
+      const actions = [
+        { kind: "upload", ref: "e1", paths: ["a.txt"], roots: ["bots/b2"] },
+        { kind: "upload", ref: "e2", paths: ["shared/b.txt"], roots: ["."] },
+      ];
+      expect(parseBrowserActions(actions)).toEqual([
+        { kind: "upload", ref: "e1", paths: ["a.txt"] },
+        { kind: "upload", ref: "e2", paths: ["shared/b.txt"] },
+      ]);
+      await browserActFromTool(
+        browser,
+        computer,
+        context,
+        { actions },
+        {
+          uploadRoots,
+          resolveUploadPath: (path) => (path.startsWith("shared/") ? path : `bots/b1/${path}`),
+        },
+      );
+      expect(act.mock.calls[0]?.[1].actions).toEqual([
+        {
+          kind: "upload",
+          ref: "e1",
+          paths: ["bots/b1/a.txt"],
+          ...(uploadRoots ? { roots: uploadRoots } : {}),
+        },
+        {
+          kind: "upload",
+          ref: "e2",
+          paths: ["shared/b.txt"],
+          ...(uploadRoots ? { roots: uploadRoots } : {}),
+        },
+      ]);
+    },
+  );
 
   it("uploads workspace files to a hidden file input by ref", async () => {
     const browser = new FakeBrowserProvider({

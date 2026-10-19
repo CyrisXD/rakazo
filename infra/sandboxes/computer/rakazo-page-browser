@@ -13,6 +13,7 @@ import hashlib
 import json
 import os
 import socket
+import stat
 import struct
 import sys
 import time
@@ -601,23 +602,52 @@ def navigate(client: CdpClient, session_id: str, url: str) -> dict[str, Any]:
 
 
 MAX_UPLOAD_FILES = 10
+MAX_UPLOAD_BYTES = 100 * 1024 * 1024
 
 
-def resolve_upload_paths(paths: Any, home: str | None = None) -> list[str]:
-    """Absolute paths to existing regular files inside the computer's home folder."""
+def resolve_upload_paths(
+    paths: Any, home: str | None = None, roots: list[str] | None = None,
+) -> list[str]:
+    """Resolve regular files within trusted roots before handing them to Chromium."""
     if not isinstance(paths, list) or not 1 <= len(paths) <= MAX_UPLOAD_FILES:
         raise RuntimeError(f"upload needs 1 to {MAX_UPLOAD_FILES} file paths")
-    root = os.path.realpath(home or os.environ.get("HOME") or "/home/rakazo")
+    home = os.path.realpath(home or os.environ.get("HOME") or "/home/rakazo")
+    location = "your folder or shared/" if roots is not None else "this computer's home folder"
+    allowed = [home]
+    if roots is not None:
+        allowed = []
+        for root in roots:
+            full = os.path.realpath(os.path.join(home, root))
+            if os.path.isabs(root) or os.path.commonpath([home, full]) != home:
+                raise RuntimeError(f"Upload files must be inside {location}")
+            # A folder that does not exist yet holds no files; the other root still applies.
+            if os.path.isdir(full):
+                allowed.append(full)
+    max_bytes = MAX_UPLOAD_BYTES
+    override = os.environ.get("RAKAZO_BROWSER_UPLOAD_MAX_BYTES", "")
+    try:
+        if int(override) > 0:
+            max_bytes = int(override)
+    except ValueError:
+        pass
     resolved = []
+    total = 0
     for path in paths:
         if not isinstance(path, str) or not path.strip():
             raise RuntimeError("upload paths must be non-empty strings")
-        # realpath follows symlinks, so a link cannot point an upload outside home.
-        full = os.path.realpath(os.path.join(root, path))
-        if os.path.commonpath([root, full]) != root:
-            raise RuntimeError(f"Upload files must be inside this computer's home folder: {path}")
-        if not os.path.isfile(full):
-            raise RuntimeError(f"File not found: {path}")
+        full = os.path.realpath(os.path.join(home, path))
+        # Check confinement before existence to avoid revealing outside targets.
+        if not any(os.path.commonpath([root, full]) == root for root in allowed):
+            raise RuntimeError(f"Upload files must be inside {location}: {path}")
+        try:
+            info = os.stat(full)
+        except OSError:
+            raise RuntimeError(f"File not found: {path}") from None
+        if not stat.S_ISREG(info.st_mode):
+            raise RuntimeError(f"Not a regular file: {path}")
+        total += info.st_size
+        if total > max_bytes:
+            raise RuntimeError(f"upload files are larger than {max_bytes / (1024 * 1024):g} MB in total")
         resolved.append(full)
     return resolved
 
@@ -668,7 +698,7 @@ def act(client: CdpClient, session_id: str, actions: list[dict[str, Any]]) -> di
             raise RuntimeError("Element ref is required")
         if step["kind"] == "upload":
             # Check every file before acting, so a bad path cannot leave a half-done form.
-            step["files"] = resolve_upload_paths(step.get("paths"))
+            step["files"] = resolve_upload_paths(step.get("paths"), roots=step.get("roots"))
         elif step["kind"] != "click" and not isinstance(step.get("text"), str):
             raise RuntimeError("Text is required")
         if step.get("origin") is not None and (
