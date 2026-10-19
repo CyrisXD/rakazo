@@ -617,8 +617,10 @@ def resolve_upload_paths(
     if roots is not None:
         allowed = []
         for root in roots:
-            full = os.path.realpath(os.path.join(home, root))
-            if os.path.isabs(root) or os.path.commonpath([home, full]) != home:
+            expected = os.path.normpath(os.path.join(home, root))
+            full = os.path.realpath(expected)
+            # A root redirected by a symlink (bots/b1 -> bots/b2) could reach another bot's files.
+            if os.path.isabs(root) or full != expected or os.path.commonpath([home, full]) != home:
                 raise RuntimeError(f"Upload files must be inside {location}")
             # A folder that does not exist yet holds no files; the other root still applies.
             if os.path.isdir(full):

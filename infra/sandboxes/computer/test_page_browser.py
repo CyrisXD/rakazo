@@ -231,6 +231,17 @@ class PageBrowserTest(unittest.TestCase):
                 [str(Path(home, "bots/b1/own.txt").resolve())],
             )
 
+    def test_team_upload_rejects_roots_redirected_to_another_bot(self):
+        import tempfile
+        with tempfile.TemporaryDirectory() as home:
+            Path(home, "bots/b2").mkdir(parents=True)
+            Path(home, "bots/b2/secret.txt").write_text("fixture")
+            Path(home, "bots/b1").symlink_to(Path(home, "bots/b2"), target_is_directory=True)
+            Path(home, "shared").symlink_to(Path(home, "bots/b2"), target_is_directory=True)
+            for path in ("bots/b1/secret.txt", "shared/secret.txt"):
+                with self.subTest(path=path), self.assertRaisesRegex(RuntimeError, "your folder or shared/"):
+                    helper.resolve_upload_paths([path], home, ["bots/b1", "shared"])
+
     def test_upload_rejects_fifo_without_opening_it(self):
         import tempfile
         with tempfile.TemporaryDirectory() as home:
